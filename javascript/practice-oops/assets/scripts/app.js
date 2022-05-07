@@ -9,6 +9,7 @@ class DOMHelper {
     const domElement = document.getElementById(elementId);
     const switchAnchorPointElement = document.querySelector(queryStatement);
     switchAnchorPointElement.append(domElement);
+    domElement.scrollIntoView({behavior: 'smooth', block: 'start'})
   }
 }
 
@@ -38,9 +39,10 @@ class Component {
 }
 
 class ToolTip extends Component {
-  constructor(closeNotifierFunction) {
-    super();
+  constructor(closeNotifierFunction, text, hostElementId) {
+    super(hostElementId);
     this.closeNotifier = closeNotifierFunction;
+    this.text = text;
     this.create();
   }
 
@@ -52,7 +54,23 @@ class ToolTip extends Component {
   create() {
     const toolTipElement = document.createElement("div");
     toolTipElement.className = "card";
-    toolTipElement.textContent = "DUMMY!";
+    const toolTipTemplate = document.getElementById('tooltip');
+    const toolTipBody = document.importNode(toolTipTemplate.content, true);
+    toolTipBody.querySelector('p').textContent = this.text;
+    toolTipElement.append(toolTipBody);
+
+    const hostElPosLeft = this.hostElement.offsetLeft;
+    const hostElPosTop = this.hostElement.offsetTop;
+    const hostElHeight = this.hostElement.clientHeight;
+    const parentElementScrolling = this.hostElement.parentElement.scrollTop;
+
+    const x = hostElPosLeft + 20;
+    const y = hostElPosTop + hostElHeight - parentElementScrolling - 10;
+
+    toolTipElement.style.position = 'absolute';
+    toolTipElement.style.left = x + 'px';
+    toolTipElement.style.top = y + 'px';
+
     toolTipElement.addEventListener("click", this.closeToolTip);
     this.element = toolTipElement;
   }
@@ -66,15 +84,30 @@ class ProjectItem {
     this.updateProjectListsHandler = updateProjectListsFunction;
     this.connectSwitchButton(type);
     this.connectMoreInfoButton();
+    this.connectDrag();
   }
 
   showMoreInfoHandler() {
     if (this.hasActiveToolTip) {
       return;
     }
-    const toolTip = new ToolTip(() => (this.hasActiveToolTip = false));
+    const projectElement= document.getElementById(this.id);
+    const toolTipText = projectElement.dataset.extraInfo;
+    const toolTip = new ToolTip(() => (this.hasActiveToolTip = false), toolTipText, this.id);
     toolTip.attach();
     this.hasActiveToolTip = true;
+  }
+
+  connectDrag() {
+    const item = document.getElementById(this.id);
+    item.addEventListener('dragstart', event => {
+      event.dataTransfer.setData('text/plain', this.id);
+      event.dataTransfer.effectAllowed = 'move';
+    });
+
+    item.addEventListener('dragend', event => {
+      console.log(event);
+    })
   }
 
   connectMoreInfoButton() {
@@ -82,7 +115,7 @@ class ProjectItem {
     const moreInfoBtn = projectItemElement.querySelector(
       "button:first-of-type"
     );
-    moreInfoBtn.addEventListener("click", this.showMoreInfoHandler);
+    moreInfoBtn.addEventListener("click", this.showMoreInfoHandler.bind(this));
   }
 
   connectSwitchButton(type) {
@@ -117,6 +150,39 @@ class ProjectList {
       );
     }
     console.log(`JS managed ${type}-projects id list: `, this.projects);
+    this.connectDroppable();
+  }
+
+  connectDroppable() {
+    const list = document.querySelector(`#${this.type}-projects ul`);
+
+    list.addEventListener('dragenter', event => {
+      if(event.dataTransfer.types[0] === 'text/plain') {
+        list.parentElement.classList.add('droppable');
+        event.preventDefault();
+      }
+    });
+
+    list.addEventListener('dragover', event => {
+      if (event.dataTransfer.types[0] === 'text/plain') {
+        event.preventDefault();
+      }
+    });
+
+    list.addEventListener('dragleave', event => {
+      if (event.relatedTarget.closest(`#${this.type}-projects ul`) !== list) {
+        list.parentElement.classList.remove('droppable');
+      }
+    });
+
+    list.addEventListener('drop', event => {
+      const prjId = event.dataTransfer.getData('text/plain');
+      if (this.projects.find(p => p.id === prjId)) {
+        return;
+      }
+      document.getElementById(prjId).querySelector('button:last-of-type').click();
+      list.parentElement.classList.remove('droppable');
+    })
   }
 
   addProject(project) {
